@@ -278,3 +278,81 @@ test('SQS AgeOfOldestMessage alarms throws if misconfigured (enabled but no thre
   t.throws(() => { createSQSAlarms(sqsAlarmProperties, testAlarmActionsConfig, compiledTemplate) }, { message: 'SQS AgeOfOldestMessage alarm is enabled but `Threshold` is not specified. Please specify a threshold or disable the alarm.' })
   t.end()
 })
+
+test('DLQ convention alarm is created when EnableDlqConvention is true', (t) => {
+  const testConfig = createTestConfig(
+    defaultConfig.alarms,
+    {
+      SQS: {
+        AgeOfOldestMessage: {
+          enabled:false
+        },
+        InFlightMessagesPc: {
+          enabled:false
+        },
+        EnableDlqConvention: true
+      }
+    })
+  const compiledTemplate = createTestCloudFormationTemplate()
+
+  // Add a DLQ queue in the template following the convention
+  compiledTemplate.Resources = {
+    ...compiledTemplate.Resources,
+    dlqQueue: {
+      Type: 'AWS::SQS::Queue',
+      Properties: {
+        QueueName: 'testQueueDlq'
+      }
+    }
+  }
+
+  const alarmResources: ResourceType = createSQSAlarms(testConfig.SQS, testAlarmActionsConfig, compiledTemplate)
+  
+  t.equal(Object.keys(alarmResources).length, 1, 'Only one DLQ alarm is created')
+
+  // Expect only one DLQ alarm to be created for ApproximateNumberOfMessagesVisible
+  const dlqAlarms = Object.entries(alarmResources).filter(([key, value]) =>
+    key.includes('dlq') && value.Properties?.MetricName === 'ApproximateNumberOfMessagesVisible'
+  )[0][1]
+
+  t.equal(dlqAlarms.Properties?.Threshold, 1, 'DLQ alarm has correct default threshold')
+  t.equal(dlqAlarms.Properties?.EvaluationPeriods, 1, 'DLQ alarm has correct evaluation periods')
+  t.equal(dlqAlarms.Properties?.ComparisonOperator, 'GreaterThanThreshold', 'DLQ alarm has correct comparison operator')
+  t.equal(dlqAlarms.Properties?.MetricName, 'ApproximateNumberOfMessagesVisible', 'DLQ alarm monitors ApproximateNumberOfMessagesVisible')
+
+  t.end()
+})
+
+test('DLQ-specific alarms are not created when EnableDlqConvention is disabled', (t) => {
+  const testConfig = createTestConfig(
+    defaultConfig.alarms,
+    {
+      SQS: {
+        AgeOfOldestMessage: {
+          enabled:false
+        },
+        InFlightMessagesPc: {
+          enabled:false
+        },
+        EnableDlqConvention: false
+      }
+    })
+  const compiledTemplate = createTestCloudFormationTemplate()
+
+  // Add a DLQ queue in the template
+  compiledTemplate.Resources = {
+    ...compiledTemplate.Resources,
+    dlqQueue: {
+      Type: 'AWS::SQS::Queue',
+      Properties: {
+        QueueName: 'testQueueDlq'
+      }
+    }
+  }
+
+  const alarmResources: ResourceType = createSQSAlarms(testConfig.SQS, testAlarmActionsConfig, compiledTemplate)
+
+  t.equal(Object.keys(alarmResources).length, 0, 'No DLQ alarm is created when EnableDlqConvention is disabled')
+
+  t.end()
+})
