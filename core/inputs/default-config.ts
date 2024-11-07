@@ -126,7 +126,9 @@ export const defaultConfig: DefaultConfig = {
       InFlightMessagesPc: {
         Statistic: 'Maximum',
         Threshold: 80 // 80% of 120000 for regular queues or 80% of 18000 for FIFO queues
-      }
+      },
+      // enable default DLQ alarm for queues ending with "Dlq"
+      EnableDlqConvention: false
     },
     ECS: {
       MemoryUtilization: {
