@@ -10,6 +10,7 @@ import { ConfigType } from '../inputs/config-types'
 export type SlicWatchSqsAlarmsConfig<T extends InputOutput> = T & {
   InFlightMessagesPc: T
   AgeOfOldestMessage: T
+  EnableDlqConvention?: boolean
 }
 
 /**
@@ -69,6 +70,26 @@ export default function createSQSAlarms (
         ...alarmProps
       }
       const resourceName = `slicWatchSQSOldestMsgAgeAlarm${queueLogicalId}`
+      const resource = createAlarm(sqsAlarmProperties, alarmActionsConfig)
+      resources[resourceName] = resource
+    }
+
+    const enableDlqConvention = sqsAlarmsConfig.EnableDlqConvention ?? false
+    // Only apply alarm for queues ending with "Dlq" when EnableDlqConvention is true
+    const isDlq: boolean = queueLogicalId.endsWith('Dlq') || queueResource.Properties?.QueueName?.endsWith('Dlq')
+
+    if (enableDlqConvention && isDlq) {
+      const sqsAlarmProperties: AlarmProperties = {
+        AlarmName: Fn.Sub(`SQS_ApproximateNumberOfMessagesVisible_\${${queueLogicalId}.QueueName}`, {}),
+        AlarmDescription: Fn.Sub(`Default DLQ alarm: Messages visible in \${${queueLogicalId}.QueueName} exceed 1, indicating potential processing issues`, {}),
+        MetricName: 'ApproximateNumberOfMessagesVisible',
+        Namespace: 'AWS/SQS',
+        Dimensions: [{ Name: 'QueueName', Value: Fn.GetAtt(`${queueLogicalId}`, 'QueueName') }],
+        Threshold: 1, // Default threshold for DLQs
+        EvaluationPeriods: 1, // Trigger alert immediately upon threshold breach
+        ComparisonOperator: 'GreaterThanThreshold'
+      }
+      const resourceName = `slicWatchSQSMessagesVisibleAlarm${queueLogicalId}`
       const resource = createAlarm(sqsAlarmProperties, alarmActionsConfig)
       resources[resourceName] = resource
     }
